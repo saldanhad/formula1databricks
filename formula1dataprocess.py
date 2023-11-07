@@ -107,7 +107,8 @@ circuits_final_df = add_ingestion_date(circuits_renamed_df)
 #mount processed blob 
 mount_adls('instablobcart','processed')
 
-circuits_final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/circuits")
+#write to data to datalake as parquet
+circuits_final_df.write.mode('overwrite').format("parquet").saveAsTable("f1_processed.circuits")
 
 #check
 df = spark.read.parquet(f"{processed_folder_path}/circuits")
@@ -144,16 +145,12 @@ races_with_ingestion_date_df = add_ingestion_date(races_with_timestamp_df)
 races_selected_df = races_with_ingestion_date_df.select(col('raceId').alias('race_id'), col('year').alias('race_year'), 
                                                    col('round'), col('circuitId').alias('circuit_id'),col('name'), col('ingestion_date'), col('race_timestamp'))
 
-#write to blob
-races_selected_df.write.mode('overwrite').partitionBy('race_year').parquet(f'{processed_folder_path}/races')
+#write to data to datalake as parquet
+races_selected_df.write.mode('overwrite').partitionBy('race_year').format("parquet").saveAsTable("f1_processed.races")
 
 #check
 df = spark.read.option("header",True).parquet(f"{processed_folder_path}/races")
 display(df)
-
-# COMMAND ----------
-
-processed_folder_path
 
 # COMMAND ----------
 
@@ -175,8 +172,8 @@ constructor_renamed_df = constructor_dropped_df.withColumnRenamed("constructorId
 
 constructor_final_df = add_ingestion_date(constructor_renamed_df)
 
-#write data to parquet, save to blob
-constructor_final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/constructors")
+#write to data to datalake as parquet
+constructor_final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.constructors")
 
 # COMMAND ----------
 
@@ -211,14 +208,20 @@ drivers_df.printSchema()
 drivers_with_ingestion_date_df = add_ingestion_date(drivers_df)
 
 drivers_with_columns_df = drivers_with_ingestion_date_df.withColumnRenamed("driverId", "driver_id") \
+                                    .withColumnRenamed("driverId", "driver_id")\
                                     .withColumnRenamed("driverRef", "driver_ref") \
                                     .withColumn("name", concat(col("name.forename"), lit(" "), col("name.surname"))) \
                                     .withColumn("data_source", lit(v_data_source))
 
 
-drivers_final_df = drivers_with_ingestion_date_df.drop(col("url"))
+drivers_final_df = drivers_with_columns_df.drop(col("url"))
 
-drivers_final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/drivers")
+#write to data to datalake as parquet
+drivers_final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.drivers")
+
+# COMMAND ----------
+
+display(drivers_final_df)
 
 # COMMAND ----------
 
@@ -248,7 +251,6 @@ results_schema = StructType(fields=[StructField("resultId", IntegerType(), False
 results_df = spark.read.schema(results_schema).json(f"{raw_folder_path}/results.json")
 
 #rename columns and add new columns
-
 results_with_columns_df = results_df.withColumnRenamed("resultId", "result_id") \
                                     .withColumnRenamed("raceId", "race_id") \
                                     .withColumnRenamed("driverId", "driver_id") \
@@ -264,7 +266,10 @@ results_with_ingestion_date_df = add_ingestion_date(results_with_columns_df)
 
 results_final_df = results_with_ingestion_date_df.drop(col("statusId"))
 
-results_final_df.write.mode("overwrite").partitionBy('race_id').parquet(f"{processed_folder_path}/results")
+
+#write to data to datalake as parquet
+results_final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.results")
+
 
 # COMMAND ----------
 
@@ -285,12 +290,13 @@ pit_stops_df = spark.read \
 
 pit_stops_with_ingestion_date_df = add_ingestion_date(pit_stops_df)
 
-final_df = pit_stops_with_ingestion_date_df.withColumnRenamed("driverId", "driver_id") \
+pitstop_final_df = pit_stops_with_ingestion_date_df.withColumnRenamed("driverId", "driver_id") \
 .withColumnRenamed("raceId", "race_id") \
 .withColumn("ingestion_date", current_timestamp()) \
 .withColumn("data_source", lit(v_data_source))
 
-final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/pit_stops")
+#write to data to datalake as parquet
+pitstop_final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.pit_stops")
 
 # COMMAND ----------
 
@@ -315,7 +321,9 @@ final_df = lap_times_with_ingestion_date_df.withColumnRenamed("driverId", "drive
 .withColumn("ingestion_date", current_timestamp()) \
 .withColumn("data_source", lit(v_data_source))
 
-final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/lap_times")
+#write to data to datalake as parquet
+final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.lap_times")
+
 
 # COMMAND ----------
 
@@ -346,7 +354,14 @@ final_df = qualifying_with_ingestion_date_df.withColumnRenamed("qualifyId", "qua
 .withColumn("data_source", lit(v_data_source))   
 
 
-final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/qualifying")
+#write to data to datalake as parquet
+results_final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_processed.qualifying")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC --check
+# MAGIC select * from f1_processed.qualifying;
 
 # COMMAND ----------
 
