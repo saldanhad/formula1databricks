@@ -4,20 +4,29 @@
 
 # COMMAND ----------
 
-# MAGIC %run "/Repos/d.saldanha3193@hotmail.com/formula1databricks/configuration" 
+# MAGIC %run "/Repos/d.saldanha3193@hotmail.com/formula1databricks/configuration&commondfunctions" 
+
+# COMMAND ----------
+
+dbutils.widgets.text("p_file_date","2021-03-21")
+v_file_date = dbutils.widgets.get("p_file_date")
+
+# COMMAND ----------
+
+v_file_date
 
 # COMMAND ----------
 
 from pyspark.sql.functions import current_timestamp, col, concat,lit
 
-drivers_df = spark.read.parquet(f"{processed_folder_path}/drivers")\
-.withColumnRenamed("driverId", "driver_id") \
+#from processed folder
+drivers_df = spark.read.parquet(f"{processed_folder_path}/drivers") \
 .withColumnRenamed("number", "driver_number") \
 .withColumnRenamed("name", "driver_name") \
 .withColumnRenamed("nationality", "driver_nationality") 
 
 constructors_df = spark.read.parquet(f"{processed_folder_path}/constructors") \
-.withColumnRenamed("name", "team")
+.withColumnRenamed("name", "team") 
 
 circuits_df = spark.read.parquet(f"{processed_folder_path}/circuits") \
 .withColumnRenamed("location", "circuit_location") 
@@ -27,33 +36,44 @@ races_df = spark.read.parquet(f"{processed_folder_path}/races") \
 .withColumnRenamed("race_timestamp", "race_date") 
 
 results_df = spark.read.parquet(f"{processed_folder_path}/results") \
-.withColumnRenamed("time", "race_time") 
+.filter(f"file_date = '{v_file_date}'") \
+.withColumnRenamed("time", "race_time") \
+.withColumnRenamed("race_id", "result_race_id") \
+.withColumnRenamed("file_date", "result_file_date") 
 
 #join circuits to races
 race_circuits_df = races_df.join(circuits_df, races_df.circuit_id == circuits_df.circuit_id, "inner") \
 .select(races_df.race_id, races_df.race_year, races_df.race_name, races_df.race_date, circuits_df.circuit_location)
 
 #join results to all other dfs
-race_results_df = results_df.join(race_circuits_df, results_df.race_id == race_circuits_df.race_id) \
+race_results_df = results_df.join(race_circuits_df, results_df.result_race_id == race_circuits_df.race_id) \
                             .join(drivers_df, results_df.driver_id == drivers_df.driver_id) \
                             .join(constructors_df, results_df.constructor_id == constructors_df.constructor_id)
 
 
 # COMMAND ----------
 
-final_df = race_results_df.select("race_year", "race_name", "race_date", "circuit_location", "driver_name", "driver_number", "driver_nationality",
-                                 "team", "grid", "fastest_lap", "race_time", "points", "position") \
-                          .withColumn("created_date", current_timestamp())
+final_df = race_results_df.select("race_id","race_year", "race_name", "race_date", "circuit_location", "driver_name", "driver_number", "driver_nationality",
+                                 "team", "grid", "fastest_lap", "race_time", "points", "position","result_file_date") \
+                          .withColumn("created_date", current_timestamp()) \
+                           .withColumnRenamed("result_file_date","file_date")
 
-#clean driver_name
-final_df = final_df.withColumn("driver_name", concat(col("driver_name.forename"), lit(" "), col("driver_name.surname")))
 
-display(final_df.filter("race_year == 2020 and race_name == 'Abu Dhabi Grand Prix'").orderBy(final_df.points.desc()))
+
+
+# COMMAND ----------
+
+display(final_df)
 
 # COMMAND ----------
 
 #write to blob as parquet table
-final_df.write.mode("overwrite").format("parquet").saveAsTable("f1_presentation.race_results")
+overwrite_partition(final_df, 'f1_presentation', 'race_results', 'race_id')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC --DROP table f1_presentation.race_results
 
 # COMMAND ----------
 
